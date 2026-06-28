@@ -1,0 +1,161 @@
+name: Download & Upload to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "File URL to download"
+        required: true
+        type: string
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # ────────────────────────────────────────────
+      # Step 1: Download file and detect extension
+      # ────────────────────────────────────────────
+      - name: Download file
+        run: |
+          URL="${{ github.event.inputs.url }}"
+
+          echo "Downloading from: $URL"
+
+          # Fetch headers first
+          HEADERS=$(curl -sI -L "$URL")
+
+          # 1. Try Content-Disposition header
+          REMOTE_NAME=$(echo "$HEADERS" \
+            | grep -i "content-disposition" \
+            | grep -oP 'filename[^;=\n]*=["\s]*\K[^;\n]+' \
+            | tail -1 \
+            | tr -d '" \r')
+
+          # 2. Fall back to URL basename
+          if [ -z "$REMOTE_NAME" ]; then
+            REMOTE_NAME=$(basename "${URL%%\?*}" | tr -d '\r')
+          fi
+
+          # 3. Extract extension
+          EXT="${REMOTE_NAME##*.}"
+
+          # 4. If no valid extension, detect from Content-Type
+          if [ -z "$EXT" ] || [ "$EXT" = "$REMOTE_NAME" ] || [ ${#EXT} -gt 5 ]; then
+            CTYPE=$(echo "$HEADERS" \
+              | grep -i "^content-type:" \
+              | cut -d: -f2 \
+              | cut -d';' -f1 \
+              | tr -d ' \r' \
+              | tr '[:upper:]' '[:lower:]')
+
+            echo "Content-Type: $CTYPE"
+
+            case "$CTYPE" in
+              video/mp4)              EXT="mp4"  ;;
+              video/x-matroska)       EXT="mkv"  ;;
+              video/webm)             EXT="webm" ;;
+              video/x-msvideo)        EXT="avi"  ;;
+              video/quicktime)        EXT="mov"  ;;
+              audio/mpeg)             EXT="mp3"  ;;
+              audio/mp4)              EXT="m4a"  ;;
+              audio/wav)              EXT="wav"  ;;
+              audio/flac)             EXT="flac" ;;
+              image/jpeg)             EXT="jpg"  ;;
+              image/png)              EXT="png"  ;;
+              image/gif)              EXT="gif"  ;;
+              image/webp)             EXT="webp" ;;
+              application/zip)        EXT="zip"  ;;
+              application/pdf)        EXT="pdf"  ;;
+              application/x-rar*)     EXT="rar"  ;;
+              application/x-7z*)      EXT="7z"   ;;
+              application/x-tar)      EXT="tar"  ;;
+              application/gzip)       EXT="gz"   ;;
+              text/plain)             EXT="txt"  ;;
+              application/json)       EXT="json" ;;
+              *)                      EXT="bin"  ;;
+            esac
+          fi
+
+          FINAL_NAME="file.$EXT"
+          echo "FINAL_NAME=$FINAL_NAME" >> $GITHUB_ENV
+
+          # Download the file
+          curl -L --progress-bar -o "$FINAL_NAME" "$URL"
+
+          SIZE=$(du -sh "$FINAL_NAME" | cut -f1)
+          echo "Downloaded: $FINAL_NAME ($SIZE)"
+          echo "FILE_SIZE=$SIZE" >> $GITHUB_ENV
+
+      # ────────────────────────────────────────────
+      # Step 2: Delete old release assets
+      # ────────────────────────────────────────────
+      - name: Delete old assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          TAG="storage"
+
+          # Create release if it doesn't exist
+          if ! gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            echo "Release '$TAG' not found, creating..."
+            gh release create "$TAG" \
+              --repo "$REPO" \
+              --title "File Storage" \
+              --notes "Auto-managed storage release" \
+              --prerelease
+            echo "Release created."
+          else
+            # Delete all existing assets
+            echo "Deleting old assets..."
+            OLD_ASSETS=$(gh release view "$TAG" \
+              --repo "$REPO" \
+              --json assets \
+              --jq '.assets[].name')
+
+            if [ -z "$OLD_ASSETS" ]; then
+              echo "No old assets found."
+            else
+              for ASSET in $OLD_ASSETS; do
+                gh release delete-asset "$TAG" "$ASSET" --yes --repo "$REPO"
+                echo "  Deleted: $ASSET"
+              done
+            fi
+          fi
+
+      # ────────────────────────────────────────────
+      # Step 3: Upload new file
+      # ────────────────────────────────────────────
+      - name: Upload new file
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          TAG="storage"
+
+          echo "Uploading: ${{ env.FINAL_NAME }}"
+
+          gh release upload "$TAG" "${{ env.FINAL_NAME }}" \
+            --repo "$REPO" \
+            --clobber
+
+          DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/${{ env.FINAL_NAME }}"
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Upload successful!"
+          echo "File:  ${{ env.FINAL_NAME }}"
+          echo "Size:  ${{ env.FILE_SIZE }}"
+          echo "Link:  $DOWNLOAD_URL"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Job Summary
+          echo "## Upload Successful" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| File | \`${{ env.FINAL_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size | ${{ env.FILE_SIZE }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Link | $DOWNLOAD_URL |" >> $GITHUB_STEP_SUMMARY
