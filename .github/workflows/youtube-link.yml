@@ -21,14 +21,22 @@ jobs:
         run: pip install -U yt-dlp
 
       - name: Write cookies file
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           # YouTube blocks datacenter IPs (like GitHub Actions runners) with a
           # "Sign in to confirm you're not a bot" error. Passing logged-in
-          # cookies fixes this. Store your cookies.txt content, BASE64-ENCODED,
-          # in a repo secret named YT_COOKIES (Settings > Secrets and
-          # variables > Actions). Base64 avoids newline/encoding corruption
-          # that breaks the Netscape cookie file format.
-          echo "${{ secrets.YT_COOKIES }}" | base64 -d > cookies.txt
+          # cookies fixes this. Store the RAW content of your exported
+          # cookies.txt file (Netscape format) in a repo secret named
+          # YT_COOKIES — no encoding needed. Using an env var instead of
+          # inlining the secret into the script avoids quoting/newline
+          # corruption issues.
+          printf '%s' "$YT_COOKIES" > cookies.txt
+
+          echo "---- cookies.txt debug info ----"
+          echo "First line: $(head -n 1 cookies.txt)"
+          echo "Line count: $(wc -l < cookies.txt)"
+          echo "---------------------------------"
 
       - name: Process input and update link.txt
         run: |
