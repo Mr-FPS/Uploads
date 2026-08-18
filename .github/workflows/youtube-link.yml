@@ -1,0 +1,67 @@
+name: Get YouTube Direct Link
+
+on:
+  workflow_dispatch:
+    inputs:
+      input:
+        description: 'Format: URL,QUALITY (e.g. https://www.youtube.com/watch?v=xxx,720) — enter 11 to clear link.txt'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  get-link:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install yt-dlp
+        run: pip install -U yt-dlp
+
+      - name: Process input and update link.txt
+        run: |
+          RAW_INPUT="${{ github.event.inputs.input }}"
+          # Trim whitespace
+          RAW_INPUT="$(echo "$RAW_INPUT" | xargs)"
+
+          # Always clear the file first (removes previous link)
+          > link.txt
+
+          if [ "$RAW_INPUT" = "11" ]; then
+            echo "Input is 11 — link.txt cleared, no link fetched."
+            exit 0
+          fi
+
+          URL="$(echo "$RAW_INPUT" | cut -d',' -f1 | xargs)"
+          QUALITY="$(echo "$RAW_INPUT" | cut -d',' -f2 | xargs | tr -d 'p')"
+
+          if [ -z "$URL" ]; then
+            echo "No URL provided, leaving link.txt empty."
+            exit 0
+          fi
+
+          if [ -z "$QUALITY" ]; then
+            QUALITY=1080
+          fi
+
+          # "best[height<=Q]" always prefers a single pre-merged format
+          # (video+audio together), so the resulting link is guaranteed
+          # to have working audio. Falls back to "best" if no match.
+          DIRECT_LINK="$(yt-dlp -f "best[height<=${QUALITY}]/best" -g "$URL" | head -n1)"
+
+          if [ -z "$DIRECT_LINK" ]; then
+            echo "Failed to extract link."
+            exit 1
+          fi
+
+          echo "$DIRECT_LINK" > link.txt
+
+      - name: Commit and push link.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add link.txt
+          git commit -m "Update link.txt" || echo "No changes to commit"
+          git push
