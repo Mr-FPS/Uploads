@@ -20,6 +20,14 @@ jobs:
       - name: Install yt-dlp
         run: pip install -U yt-dlp
 
+      - name: Write cookies file
+        run: |
+          # YouTube blocks datacenter IPs (like GitHub Actions runners) with a
+          # "Sign in to confirm you're not a bot" error. Passing logged-in
+          # cookies fixes this. Store your cookies.txt content in a repo
+          # secret named YT_COOKIES (Settings > Secrets and variables > Actions).
+          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+
       - name: Process input and update link.txt
         run: |
           RAW_INPUT="${{ github.event.inputs.input }}"
@@ -49,14 +57,16 @@ jobs:
           # "best[height<=Q]" always prefers a single pre-merged format
           # (video+audio together), so the resulting link is guaranteed
           # to have working audio. Falls back to "best" if no match.
-          DIRECT_LINK="$(yt-dlp -f "best[height<=${QUALITY}]/best" -g "$URL" | head -n1)"
+          DIRECT_LINK="$(yt-dlp --cookies cookies.txt -f "best[height<=${QUALITY}]/best" -g "$URL" | head -n1)"
 
           if [ -z "$DIRECT_LINK" ]; then
             echo "Failed to extract link."
+            rm -f cookies.txt
             exit 1
           fi
 
           echo "$DIRECT_LINK" > link.txt
+          rm -f cookies.txt
 
       - name: Commit and push link.txt
         run: |
