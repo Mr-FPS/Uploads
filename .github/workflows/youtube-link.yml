@@ -24,9 +24,11 @@ jobs:
         run: |
           # YouTube blocks datacenter IPs (like GitHub Actions runners) with a
           # "Sign in to confirm you're not a bot" error. Passing logged-in
-          # cookies fixes this. Store your cookies.txt content in a repo
-          # secret named YT_COOKIES (Settings > Secrets and variables > Actions).
-          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+          # cookies fixes this. Store your cookies.txt content, BASE64-ENCODED,
+          # in a repo secret named YT_COOKIES (Settings > Secrets and
+          # variables > Actions). Base64 avoids newline/encoding corruption
+          # that breaks the Netscape cookie file format.
+          echo "${{ secrets.YT_COOKIES }}" | base64 -d > cookies.txt
 
       - name: Process input and update link.txt
         run: |
