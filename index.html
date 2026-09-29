@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPTV Direct Stream Player</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background-color: #0a0e14;
+    color: #e8ecf3;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 20px 14px 44px 14px; }
+
+  header { padding: 4px 0 20px 0; margin-bottom: 20px; border-bottom: 1px solid #232b3a; }
+  header .eyebrow {
+    display: inline-block; font-size: 10px; font-weight: bold;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: #0a0e14; background-color: #ffb020;
+    padding: 3px 8px; border-radius: 3px; margin-bottom: 10px;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: bold; color: #f4f6fa; }
+  header p { margin: 8px 0 0 0; color: #8b93a6; font-size: 13px; line-height: 1.5; max-width: 560px; }
+
+  .panel {
+    background-color: #10161f; border: 1px solid #232b3a;
+    border-radius: 10px; padding: 16px; margin-bottom: 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .panel h2 {
+    margin: 0 0 12px 0; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #8b93a6;
+  }
+  label {
+    display: block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #8b93a6; margin: 0 0 5px 0;
+  }
+  input[type="text"] {
+    width: 100%; padding: 11px 12px; font-size: 14px;
+    background-color: #0a0e14; border: 1px solid #232b3a;
+    border-radius: 6px; color: #e8ecf3; outline: none;
+    transition: border-color 0.15s ease;
+  }
+  input[type="text"]:focus { border-color: #ffb020; }
+  input[type="text"]::placeholder { color: #5f6779; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row .grow { flex: 1 1 200px; }
+
+  button {
+    padding: 11px 20px; font-size: 13px; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border: none; border-radius: 6px; cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  .btn-primary { background-color: #ffb020; color: #0a0e14; }
+  .btn-primary:hover { background-color: #ffc247; }
+  .btn-primary:active { background-color: #e6a013; }
+  .btn-secondary { background-color: #232b3a; color: #e8ecf3; }
+  .btn-secondary:hover { background-color: #303a4d; }
+
+  .preset-hint {
+    margin-top: 8px; font-family: Consolas, 'Courier New', monospace;
+    font-size: 11px; color: #5f6779; word-break: break-all;
+  }
+  .play-row { margin-top: 16px; }
+  #status {
+    color: #8b93a6; font-family: Consolas, 'Courier New', monospace;
+    font-size: 12px; margin: 14px 0 0 0;
+  }
+
+  #playerPanel {
+    display: none; margin-bottom: 18px; border-radius: 10px;
+    overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  }
+  .now-playing-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 11px 14px; background-color: #151d2b;
+    border: 1px solid #232b3a; border-bottom: none;
+  }
+  .now-playing-bar .label {
+    font-family: Consolas, 'Courier New', monospace; font-size: 11px;
+    color: #ffb020; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;
+  }
+  #nowPlayingName { color: #e8ecf3; font-weight: bold; margin-left: 6px; }
+  #stopBtn {
+    background-color: #232b3a; color: #e8ecf3; border-radius: 5px;
+    padding: 7px 14px; font-size: 11px; letter-spacing: 0.04em;
+  }
+  #stopBtn:hover { background-color: #303a4d; }
+
+  .video-frame {
+    position: relative; width: 100%; padding-bottom: 56.25%;
+    background-color: #000; border: 1px solid #232b3a; border-top: none;
+  }
+  .video-frame video {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: #000;
+  }
+
+  @media (max-width: 640px) { header h1 { font-size: 19px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">Direct stream</span>
+    <h1>IPTV Direct Stream Player</h1>
+    <p>Paste a stream URL (m3u8 / mp4 / mpd) and play it, or load the preset URL configured in this file. The stream is requested directly by your browser.</p>
+  </header>
+
+  <div class="panel">
+    <h2>Stream source</h2>
+
+    <label for="urlInput">Stream URL</label>
+    <div class="row">
+      <div class="grow"><input type="text" id="urlInput" placeholder="https://.../index.m3u8"></div>
+      <button class="btn-secondary" id="presetBtn">Load &amp; play preset</button>
+    </div>
+    <div class="preset-hint">Preset: <span id="presetPreview"></span></div>
+
+    <div class="row play-row">
+      <button class="btn-primary" id="playBtn">Play</button>
+    </div>
+
+    <div id="status">Ready.</div>
+  </div>
+
+  <div id="playerPanel">
+    <div class="now-playing-bar">
+      <span class="label">Now Playing:<span id="nowPlayingName"></span></span>
+      <button id="stopBtn">Stop</button>
+    </div>
+    <div class="video-frame">
+      <video id="player" controls autoplay playsinline></video>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* Plain ES5 — works on older browsers / TV boxes. */
+
+// ---- Config: edit this ----------------------------------------------------
+var DEFAULT_STREAM_URL = 'https://github.com/Mr-FPS/Uploads/releases/download/storage/file.mp4';
+
+// Player libraries are loaded from CDNs (first one that works wins).
+var HLS_JS_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js',
+  'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js'
+];
+var DASH_JS_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/dashjs/5.0.3/legacy/umd/dash.all.min.js',
+  'https://cdn.jsdelivr.net/npm/dashjs@5.0.3/dist/legacy/umd/dash.all.min.js'
+];
+// ---------------------------------------------------------------------------
+
+var hlsInstance = null;
+var dashInstance = null;
+
+function $(id) { return document.getElementById(id); }
+
+function setText(el, msg) {
+  el.innerHTML = '';
+  el.appendChild(document.createTextNode(msg));
+}
+function setStatus(msg) { setText($('status'), msg); }
+
+function trim(s) { return s.replace(/^\s+|\s+$/g, ''); }
+
+/* ---------------- script loading with fallback ---------------- */
+
+function loadScript(urls, globalName, cb) {
+  if (window[globalName]) { cb(true); return; }
+  var i = 0;
+  function tryNext() {
+    if (i >= urls.length) { cb(false); return; }
+    var s = document.createElement('script');
+    s.src = urls[i++];
+    s.onload = function () { cb(!!window[globalName]); };
+    s.onerror = function () {
+      if (s.parentNode) s.parentNode.removeChild(s);
+      tryNext();
+    };
+    document.head.appendChild(s);
+  }
+  tryNext();
+}
+
+/* ---------------- UI handlers ---------------- */
+
+function loadPreset() {
+  if (!DEFAULT_STREAM_URL) { setStatus('No preset URL is configured in the file.'); return; }
+  $('urlInput').value = DEFAULT_STREAM_URL;
+  onPlayClick();
+}
+
+function onPlayClick() {
+  var url = trim($('urlInput').value);
+  if (!url) { setStatus('Enter a stream URL first.'); return; }
+  if (!/^https?:\/\//i.test(url)) { setStatus('URL must start with http:// or https://'); return; }
+  setStatus('Loading stream...');
+  playStream(url);
+}
+
+/* ---------------- playback ---------------- */
+
+function playStream(url) {
+  var panel = $('playerPanel');
+  var video = $('player');
+  var nameEl = $('nowPlayingName');
+
+  panel.style.display = 'block';
+  setText(nameEl, ' loading...');
+
+  destroyPlayers();
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+
+  function onPlaying() {
+    setText(nameEl, ' playing');
+    setStatus('Playing.');
+  }
+  function onVideoError() {
+    setText(nameEl, ' playback error');
+    setStatus('Playback error. The URL may be wrong, or the source blocks cross-origin (CORS) / hotlinked playback.');
+  }
+  video.onplaying = onPlaying;
+  video.onerror = onVideoError;
+
+  var lower = url.toLowerCase();
+
+  // DASH always needs an MSE-based JS player.
+  if (lower.indexOf('.mpd') !== -1) {
+    loadScript(DASH_JS_URLS, 'dashjs', function (ok) {
+      if (!ok) { setStatus('Could not load dash.js from any CDN.'); onVideoError(); return; }
+      dashInstance = dashjs.MediaPlayer().create();
+      dashInstance.on(dashjs.MediaPlayer.events.ERROR, function () { onVideoError(); });
+      dashInstance.initialize(video, url, true);
+    });
+    return;
+  }
+
+  var isHls = lower.indexOf('.m3u8') !== -1;
+
+  // Native HLS (Safari, iOS, some TV boxes) or plain files like mp4.
+  if (!isHls || (video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl'))) {
+    video.src = url;
+    video.play();
+    return;
+  }
+
+  // HLS via hls.js
+  if (window.MediaSource || window.WebKitMediaSource) {
+    loadScript(HLS_JS_URLS, 'Hls', function (ok) {
+      if (!ok) {
+        setStatus('Could not load hls.js from any CDN. Trying native playback...');
+        video.src = url;
+        video.play();
+        return;
+      }
+      hlsInstance = new Hls();
+      hlsInstance.loadSource(url);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, function () { video.play(); });
+      hlsInstance.on(Hls.Events.ERROR, function (evt, data) {
+        if (data && data.fatal) onVideoError();
+      });
+    });
+    return;
+  }
+
+  // Last resort
+  video.src = url;
+  video.play();
+}
+
+function stopPlayback() {
+  var video = $('player');
+  destroyPlayers();
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  $('playerPanel').style.display = 'none';
+  setStatus('Stopped.');
+}
+
+function destroyPlayers() {
+  if (hlsInstance) {
+    try { hlsInstance.destroy(); } catch (e) {}
+    hlsInstance = null;
+  }
+  if (dashInstance) {
+    try { dashInstance.destroy(); } catch (e) {}
+    dashInstance = null;
+  }
+}
+
+/* ---------------- wiring ---------------- */
+
+$('playBtn').addEventListener('click', onPlayClick);
+$('presetBtn').addEventListener('click', loadPreset);
+$('stopBtn').addEventListener('click', stopPlayback);
+$('urlInput').addEventListener('keydown', function (e) {
+  if ((e.keyCode || e.which) === 13) onPlayClick();
+});
+
+setText($('presetPreview'), DEFAULT_STREAM_URL || '(not set)');
+</script>
+</body>
+</html>
